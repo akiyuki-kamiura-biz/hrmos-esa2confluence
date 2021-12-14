@@ -5,13 +5,13 @@
 
 import os
 import requests
-from esa_post import EsaPost
+from model.esa_post import EsaPost
 
 from api_keys import ESA_API_ACCESS_TOKEN
 
 ESA_API_LIST_POSTS_URL = "http://api.esa.io/v1/teams/hrmos/posts"
-MAX_PAGE = 2 # TODO: 75に戻す
-POSTS_PER_PAGE = 10 # TODO: 100に戻す
+MAX_PAGE = 10 # TODO: 75に戻す
+POSTS_PER_PAGE = 100 # TODO: 100に戻す
 
 EXPORT_ROOT_DIRECTORY = "esa_posts"
 

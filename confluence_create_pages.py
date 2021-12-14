@@ -3,7 +3,7 @@ import os
 import glob
 import json
 import requests
-from esa_post import EsaPost
+from model.esa_post import EsaPost
 from requests.auth import HTTPBasicAuth
 
 from api_keys import CONFLUENCE_API_KEY, CONFLUENCE_API_USER
@@ -103,10 +103,9 @@ def dfs_dir_node(path, parent_id):
     if parent_id is not None:
         payload["ancestors"] = [{"id": parent_id}]
 
-    # page_id = create_post(payload)
-    # print("created dir page. path: {}, id: {}".format(path, page_id))
-    # dfs_tree(path, page_id)
-    dfs_tree(path, None)
+    page_id = create_post(payload)
+    print("created dir page. path: {}, id: {}".format(path, page_id))
+    dfs_tree(path, page_id)
 
 
 def dfs_tree(path, parent_id=None):
