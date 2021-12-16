@@ -42,7 +42,7 @@ if __name__ == '__main__':
     posts = []
     current_page = 1
 
-    while current_page < MAX_PAGE:
+    while current_page <= MAX_PAGE:
         next_page, posts_per_page = download_esa_posts_per_page(current_page)
         posts.extend(posts_per_page)
         if next_page is None: break

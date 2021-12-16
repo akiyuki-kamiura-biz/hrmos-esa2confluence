@@ -2,6 +2,8 @@ import re
 import os
 import glob
 import json
+import html
+import markdown
 import requests
 from model.esa_post import EsaPost
 from requests.auth import HTTPBasicAuth
@@ -13,6 +15,7 @@ CONFLUENCE_API_CREATE_POST_URL = "https://bizreach.atlassian.net/wiki/rest/api/c
 CONFLUENCE_SPACE_KEY = "hrmosesaexport"
 EXPORT_ROOT_DIRECTORY = "esa_posts"
 
+failed_paths = []
 
 def create_title(path):
     if path.endswith(".json"):
@@ -27,7 +30,7 @@ def create_title(path):
     return title
 
 
-def create_post(payload):
+def create_post(payload, path):
     res = requests.post(
         CONFLUENCE_API_CREATE_POST_URL,
         json=payload,
@@ -37,24 +40,20 @@ def create_post(payload):
     if res.status_code == 200:
         return res.json().get('id', None)
     else:
-        raise RuntimeError("Confluence api returns error. code: {}, message: {}".format(res.status_code, res.json()))
+        failed_paths.append(path)
+        print("Confluence api returns error. path: {}, code: {}, message: {}".format(path, res.status_code, res.json()))
 
+def create_html_from_markdown(markdown_text):
+    html_escaped = html.escape(markdown_text)
 
-def reshape_html(html_text):
-    print("html_text: {}".format(html_text))
+    md = markdown.Markdown()
+    converted = md.convert(html_escaped)
 
-    # NOTE: confluenceは「htmlのタグは必ず閉じろ」という仕様みたいなので置換対応
-    close_tags = ["img", "br", "input", "hr"]
+    close_tags = ["img", "input"]
     for tag in close_tags:
-        html_text = re.sub("<({}.*?)>".format(tag), r"<\1 />", html_text)
+        converted = re.sub("<({}.*?)>".format(tag), r"<\1 />", converted)
 
-    # TODO: confluence側のコードを見やすくするための加工
-
-    # TODO: confluence側でcheckboxがなくなってしまう問題への対応
-
-    # TODO: confluence側で記事が横方向で真ん中に寄る場合と左による場合の差がわからないので調査して対応
-
-    return html_text
+    return converted
 
 
 def dfs_file_node(path, parent_id):
@@ -62,10 +61,10 @@ def dfs_file_node(path, parent_id):
     esa_post_json = json.load(file_text)
     esa_post = EsaPost(esa_post_json)
 
-    content_html = "<p>esa記事から作成：<a href=\"{}\">{}</a>.</p><br /><br />\n{}".format(
+    content_html = "<p>esa記事から作成：<a href=\"{}\">{}</a>.</p><br />\n{}".format(
         esa_post.url,
         esa_post.url,
-        reshape_html(esa_post.body_html)
+        create_html_from_markdown(esa_post.body_md)
     )
 
     payload = {
@@ -74,7 +73,7 @@ def dfs_file_node(path, parent_id):
         "space": {"key": CONFLUENCE_SPACE_KEY},
         "status": "current",
         "body": {
-            "styled_view": {
+            "storage": {
                 "value": content_html,
                 "representation": "storage"
             }
@@ -82,8 +81,8 @@ def dfs_file_node(path, parent_id):
     }
     if parent_id is not None:
         payload["ancestors"] = [{"id": parent_id}]
-    page_id = create_post(payload)
 
+    page_id = create_post(payload, path)
     print("created file page. path: {}".format(path))
 
 
@@ -103,7 +102,7 @@ def dfs_dir_node(path, parent_id):
     if parent_id is not None:
         payload["ancestors"] = [{"id": parent_id}]
 
-    page_id = create_post(payload)
+    page_id = create_post(payload, path)
     print("created dir page. path: {}, id: {}".format(path, page_id))
     dfs_tree(path, page_id)
 
@@ -119,4 +118,9 @@ def dfs_tree(path, parent_id=None):
 
 
 if __name__ == '__main__':
+    failed_paths = []
     dfs_tree(EXPORT_ROOT_DIRECTORY)
+
+    print("=============")
+    print("failed count: {}".format(len(failed_paths)))
+    print("failed files: {}".format(", ".join(failed_paths)))
