@@ -1,5 +1,5 @@
 import requests
-import json
+import tqdm
 from requests.auth import HTTPBasicAuth
 
 from api_keys import CONFLUENCE_API_KEY, CONFLUENCE_API_USER
@@ -7,7 +7,7 @@ from api_keys import CONFLUENCE_API_KEY, CONFLUENCE_API_USER
 CONFLUENCE_SPACE_KEY = "hrmosesaexport"
 
 if __name__ == '__main__':
-    get_url = "https://bizreach.atlassian.net/wiki/rest/api/content?spaceKey={}&limit=1000".format(CONFLUENCE_SPACE_KEY)
+    get_url = "https://bizreach.atlassian.net/wiki/rest/api/content?spaceKey={}&limit=10000".format(CONFLUENCE_SPACE_KEY)
     res = requests.request(
         "GET",
         get_url,
@@ -22,8 +22,7 @@ if __name__ == '__main__':
 
     print("page ids in space: {}".format(content_ids))
 
-
-    for page_id in content_ids:
+    for page_id in tqdm.tqdm(content_ids):
         delete_url = "https://bizreach.atlassian.net/wiki/rest/api/content/{}".format(page_id)
         res = requests.request(
             "DELETE",
@@ -34,5 +33,3 @@ if __name__ == '__main__':
             },
             auth=HTTPBasicAuth(CONFLUENCE_API_USER, CONFLUENCE_API_KEY)
         )
-
-        print(res.status_code)

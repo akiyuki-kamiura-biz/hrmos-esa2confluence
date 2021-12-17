@@ -1,8 +1,10 @@
-import re
+import tqdm
 import os
 import glob
 import json
+import time
 import html
+import http
 import markdown
 import requests
 from model.esa_post import EsaPost
@@ -16,6 +18,7 @@ CONFLUENCE_SPACE_KEY = "hrmosesaexport"
 EXPORT_ROOT_DIRECTORY = "esa_posts"
 
 failed_paths = []
+bar = None
 
 def create_title(path):
     if path.endswith(".json"):
@@ -30,28 +33,34 @@ def create_title(path):
     return title
 
 
-def create_post(payload, path):
-    res = requests.post(
-        CONFLUENCE_API_CREATE_POST_URL,
-        json=payload,
-        auth=HTTPBasicAuth(CONFLUENCE_API_USER, CONFLUENCE_API_KEY)
-    )
-
-    if res.status_code == 200:
-        return res.json().get('id', None)
-    else:
-        failed_paths.append(path)
-        print("Confluence api returns error. path: {}, code: {}, message: {}".format(path, res.status_code, res.json()))
+def create_post(payload, path, retry_count=0):
+    try:
+        res = requests.post(
+            CONFLUENCE_API_CREATE_POST_URL,
+            json=payload,
+            auth=HTTPBasicAuth(CONFLUENCE_API_USER, CONFLUENCE_API_KEY),
+            timeout=60
+        )
+        if res.status_code == 200:
+            return res.json().get('id', None)
+        else:
+            failed_paths.append(path)
+            print("Confluence api returns error. path: {}, code: {}, message: {}".format(path, res.status_code,
+                                                                                         res.json()))
+    except Exception as e:
+        if retry_count >= 3:
+            failed_paths.append(path)
+            print("Unknown exception happened 3 times in a row. Skip create page. path: {}, exception args: {}".format(path, e.args))
+        else:
+            print("Unknown exception happened. retry after 60sec. retry_count: {}".format(retry_count+1))
+            time.sleep(60)
+            create_post(payload, path, retry_count+1)
 
 def create_html_from_markdown(markdown_text):
     html_escaped = html.escape(markdown_text)
 
-    md = markdown.Markdown()
+    md = markdown.Markdown(extensions=['tables', 'fenced_code'])
     converted = md.convert(html_escaped)
-
-    close_tags = ["img", "input"]
-    for tag in close_tags:
-        converted = re.sub("<({}.*?)>".format(tag), r"<\1 />", converted)
 
     return converted
 
@@ -83,7 +92,7 @@ def dfs_file_node(path, parent_id):
         payload["ancestors"] = [{"id": parent_id}]
 
     page_id = create_post(payload, path)
-    print("created file page. path: {}".format(path))
+    # print("created file page. path: {}".format(path))
 
 
 def dfs_dir_node(path, parent_id):
@@ -103,7 +112,7 @@ def dfs_dir_node(path, parent_id):
         payload["ancestors"] = [{"id": parent_id}]
 
     page_id = create_post(payload, path)
-    print("created dir page. path: {}, id: {}".format(path, page_id))
+    # print("created dir page. path: {}, id: {}".format(path, page_id))
     dfs_tree(path, page_id)
 
 
@@ -111,6 +120,7 @@ def dfs_tree(path, parent_id=None):
     file_paths = glob.glob(path + "/*")
 
     for fpath in file_paths:
+        bar.update(1)
         if os.path.isfile(fpath):
             dfs_file_node(fpath, parent_id)
         elif os.path.isdir(fpath):
@@ -119,7 +129,11 @@ def dfs_tree(path, parent_id=None):
 
 if __name__ == '__main__':
     failed_paths = []
-    dfs_tree(EXPORT_ROOT_DIRECTORY)
+
+    total_file_count = len(glob.glob(EXPORT_ROOT_DIRECTORY + "/**", recursive=True))
+    bar = tqdm.tqdm(total=total_file_count)
+
+    dfs_tree(EXPORT_ROOT_DIRECTORY, None)
 
     print("=============")
     print("failed count: {}".format(len(failed_paths)))
